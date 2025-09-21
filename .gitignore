@@ -1,10 +1,27 @@
-# Node
-node_modules/
+# Firebase credentials - VERY IMPORTANT
+*.json
 
 # Python
 .venv/
 __pycache__/
 *.pyc
 
+# Node.js
+node_modules/
+.env
+
 # General
 .DS_Store
+```
+After you save this, the JSON file icon in your VS Code sidebar might turn gray, indicating that Git is now ignoring it.
+
+---
+### **Step 2: Update Your Python Scripts**
+
+We will modify your Python scripts to read the API key from a new, secret `.env` file instead of having it written directly in the code.
+
+#### **Action Plan**
+1.  **Install a new library.** In your activated virtual environment, run:
+    ```bash
+    pip install python-dotenv
+    

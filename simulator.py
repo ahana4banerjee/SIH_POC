@@ -5,6 +5,30 @@ import datetime
 import numpy as np
 import paho.mqtt.client as mqtt
 import requests # New import for making API calls
+# --- SECURE CONFIGURATION BLOCK (for all Python files) ---
+import os
+from dotenv import load_dotenv
+import firebase_admin
+from firebase_admin import credentials, db
+import json
+
+# Load variables from the .env file in the root directory
+load_dotenv()
+
+# Securely load Firebase credentials from the environment variable
+firebase_service_account_json_string = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON_STRING')
+if not firebase_service_account_json_string:
+    raise ValueError("Firebase credentials are not set in the .env file.")
+
+# Convert the single-line JSON string back into a Python dictionary
+service_account_info = json.loads(firebase_service_account_json_string)
+credential = credentials.Certificate(service_account_info)
+
+# Securely load the database URL
+database_url = os.getenv('FIREBASE_DATABASE_URL')
+if not database_url:
+    raise ValueError("Firebase database URL is not set in the .env file.")
+
 
 # --- 1. CONFIGURATION ---
 MQTT_BROKER = "test.mosquitto.org"
@@ -13,7 +37,7 @@ MQTT_TOPIC = "smartgrid/data"
 
 # --- NEW: Weather API Configuration ---
 # TODO: Paste your own free API key from OpenWeatherMap.org here
-WEATHER_API_KEY = "56f43db560c75cb0f3bee062e6746f26" 
+WEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY')
 # Coordinates for a sample rural area (e.g., a village in Telangana, India)
 LATITUDE = 20.3
 LONGITUDE = 84.1

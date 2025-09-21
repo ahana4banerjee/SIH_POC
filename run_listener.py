@@ -7,11 +7,33 @@ import paho.mqtt.client as mqtt
 import firebase_admin
 from firebase_admin import credentials, db
 import time
+# --- SECURE CONFIGURATION BLOCK (for all Python files) ---
+import os
+from dotenv import load_dotenv
+import firebase_admin
+from firebase_admin import credentials, db
+import json
+
+# Load variables from the .env file in the root directory
+load_dotenv()
+
+# Securely load Firebase credentials from the environment variable
+firebase_service_account_json_string = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON_STRING')
+if not firebase_service_account_json_string:
+    raise ValueError("Firebase credentials are not set in the .env file.")
+
+# Convert the single-line JSON string back into a Python dictionary
+service_account_info = json.loads(firebase_service_account_json_string)
+credential = credentials.Certificate(service_account_info)
+
+# Securely load the database URL
+database_url = os.getenv('FIREBASE_DATABASE_URL')
+if not database_url:
+    raise ValueError("Firebase database URL is not set in the .env file.")
+
 
 # --- CONFIGURATION ---
 # These are the settings from our successful test.
-CRED_PATH = 'sih-54b90-firebase-adminsdk-fbsvc-da5e1c6ca4.json'
-DATABASE_URL = 'https://sih-54b90-default-rtdb.firebaseio.com/'
 MQTT_BROKER_ADDRESS = "test.mosquitto.org"
 MQTT_TOPIC_TO_SUBSCRIBE = "smartgrid/data"
 # --- END OF CONFIGURATION ---
@@ -19,12 +41,10 @@ MQTT_TOPIC_TO_SUBSCRIBE = "smartgrid/data"
 # --- 2. INITIALIZE FIREBASE (FINAL CORRECTED VERSION) ---
 try:
     print("STEP 1: Initializing Firebase...")
-    cred = credentials.Certificate(CRED_PATH)
-    
     # CHANGE #1: We capture the initialized app in a variable called 'app'.
     app = firebase_admin.initialize_app(
-        cred,
-        {'databaseURL': DATABASE_URL},
+        credential,
+        {'databaseURL': database_url},
         name='myFinalListenerApp'
     )
     
@@ -38,7 +58,7 @@ except Exception as e:
     print(f"      The specific error is: {e}\n")
     exit()
 
-    
+
 # --- MQTT Functions ---
 def on_mqtt_connect(client, userdata, flags, rc):
     if rc == 0:
