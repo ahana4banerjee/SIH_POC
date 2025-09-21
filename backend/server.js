@@ -1,0 +1,59 @@
+import express from 'express';
+import admin from 'firebase-admin';
+import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// --- ESM FIX FOR __dirname ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// --- CONFIGURATION ---
+const SERVICE_ACCOUNT_KEY_PATH = './sih-54b90-firebase-adminsdk-fbsvc-da5e1c6ca4.json';
+const DATABASE_URL = 'https://sih-54b90-default-rtdb.firebaseio.com/';
+const PORT = 5000;
+
+// --- INITIALIZE FIREBASE & EXPRESS ---
+try {
+    admin.initializeApp({
+        credential: admin.credential.cert(SERVICE_ACCOUNT_KEY_PATH),
+        databaseURL: DATABASE_URL
+    });
+} catch (error) {
+    if (!admin.apps.length) {
+        console.error("Firebase Admin initialization error:", error.message);
+        process.exit(1);
+    }
+}
+const db = admin.database();
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// --- CORE API ENDPOINTS ---
+app.get('/api/latest-data', async (req, res) => { try { const s = await db.ref('live_data').orderByKey().limitToLast(1).once('value'); s.exists() ? res.json(Object.values(s.val())[0]) : res.status(404).send('No live data.'); } catch (e) { res.status(500).send(e.message); } });
+app.get('/api/historical-data', async (req, res) => { try { const s = await db.ref('live_data').orderByKey().limitToLast(100).once('value'); s.exists() ? res.json(Object.values(s.val())) : res.status(404).send('No historical data.'); } catch (e) { res.status(500).send(e.message); } });
+app.get('/api/alerts', async (req, res) => { try { const s = await db.ref('alerts').once('value'); res.json(s.exists() ? Object.values(s.val()).reverse() : []); } catch (e) { res.status(500).send(e.message); } });
+app.get('/api/efficiency-proof', async (req, res) => { try { const s = await db.ref('efficiency_proof').once('value'); s.exists() ? res.json(s.val()) : res.status(404).send('No efficiency proof data.'); } catch (e) { res.status(500).send(e.message); } });
+
+// --- REPORTING ENDPOINTS ---
+app.get('/api/all-reports', async (req, res) => {
+    try {
+        const snapshot = await db.ref('reports').once('value');
+        res.json(snapshot.exists() ? snapshot.val() : {});
+    } catch (error) { res.status(500).send(error.message); }
+});
+app.get('/api/download-report-pdf', (req, res) => {
+    const pdfPath = path.join(__dirname, '../reports/latest_report.pdf');
+    res.download(pdfPath, 'Microgrid_Performance_Report.pdf', (err) => {
+        if (err) { res.status(404).send("Could not find the report PDF. Please run 'report_generator.py'."); }
+    });
+});
+app.post('/api/send-report-sms', (req, res) => { const { phone } = req.body; console.log(`SIMULATION: SMS to ${phone}`); res.json({ success: true, message: `Report sent to ${phone} (Simulated)` }); });
+app.post('/api/send-report-email', (req, res) => { const { email } = req.body; console.log(`SIMULATION: Email to ${email}`); res.json({ success: true, message: `Report sent to ${email} (Simulated)` }); });
+
+// --- START THE SERVER ---
+app.listen(PORT, () => {
+    console.log(`✅ Definitive Backend Server running on http://localhost:${PORT}`);
+});
+
