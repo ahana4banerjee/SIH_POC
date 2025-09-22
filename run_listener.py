@@ -1,20 +1,10 @@
-print("--- EXECUTING run_listener.py v1.0 (Clean Slate Version) ---")
-print("If you do not see this message, you are running the wrong file.")
-print("-" * 50)
-
 import json
 import paho.mqtt.client as mqtt
 import firebase_admin
 from firebase_admin import credentials, db
 import time
-# --- SECURE CONFIGURATION BLOCK (for all Python files) ---
 import os
 from dotenv import load_dotenv
-import firebase_admin
-from firebase_admin import credentials, db
-import json
-
-# Load variables from the .env file in the root directory
 load_dotenv()
 
 # Securely load Firebase credentials from the environment variable

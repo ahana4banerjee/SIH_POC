@@ -5,6 +5,7 @@ import cors from 'cors';
 import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
 dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 
 // --- ESM FIX FOR __dirname ---
@@ -37,17 +38,72 @@ app.use(cors());
 app.use(express.json());
 
 // --- CORE API ENDPOINTS ---
-app.get('/api/latest-data', async (req, res) => { try { const s = await db.ref('live_data').orderByKey().limitToLast(1).once('value'); s.exists() ? res.json(Object.values(s.val())[0]) : res.status(404).send('No live data.'); } catch (e) { res.status(500).send(e.message); } });
-app.get('/api/historical-data', async (req, res) => { try { const s = await db.ref('live_data').orderByKey().limitToLast(100).once('value'); s.exists() ? res.json(Object.values(s.val())) : res.status(404).send('No historical data.'); } catch (e) { res.status(500).send(e.message); } });
-app.get('/api/alerts', async (req, res) => { try { const s = await db.ref('alerts').once('value'); res.json(s.exists() ? Object.values(s.val()).reverse() : []); } catch (e) { res.status(500).send(e.message); } });
-app.get('/api/efficiency-proof', async (req, res) => { try { const s = await db.ref('efficiency_proof').once('value'); s.exists() ? res.json(s.val()) : res.status(404).send('No efficiency proof data.'); } catch (e) { res.status(500).send(e.message); } });
+app.get('/api/latest-data', async (req, res) => { 
+  try { 
+    const s = await db.ref('live_data').orderByKey().limitToLast(1).once('value'); 
+    s.exists() ? res.json(Object.values(s.val())[0]) : res.status(404).send('No live data.'); 
+  } catch (e) { 
+    res.status(500).send(e.message); 
+  } 
+});
+
+app.get('/api/historical-data', async (req, res) => {
+  try {
+    const s = await db.ref('live_data').orderByKey().limitToLast(100).once('value');
+    s.exists() ? res.json(Object.values(s.val())) : res.status(404).send('No historical data.'); 
+  } catch (e) {
+    res.status(500).send(e.message); 
+  } 
+});
+
+app.get('/api/alerts', async (req, res) => {
+  try { 
+    const s = await db.ref('alerts').once('value'); 
+    res.json(s.exists() ? Object.values(s.val()).reverse() : []); 
+  } catch (e) { 
+    res.status(500).send(e.message); 
+  } 
+});
+
+app.get('/api/efficiency-proof', async (req, res) => { 
+  try { 
+    const s = await db.ref('efficiency_proof').once('value'); 
+    s.exists() ? res.json(s.val()) : res.status(404).send('No efficiency proof data.'); 
+  } catch (e) { 
+    res.status(500).send(e.message); 
+  } 
+});
+
+app.post('/api/recalculate-efficiency', (req, res) => {
+    console.log("Received request to recalculate efficiency...");
+
+    // This command finds the python interpreter inside your .venv and executes the script
+    const pythonExecutable = path.join(__dirname, '..', '.venv', 'Scripts', 'python');
+    const pythonScriptPath = path.join(__dirname, '..', 'efficiency_calculator.py');
+    const command = `"${pythonExecutable}" "${pythonScriptPath}"`;
+
+    exec(command, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`Error executing script: ${error.message}`);
+            return res.status(500).json({ success: false, message: 'Failed to run calculation script.', error: error.message });
+        }
+        if (stderr) {
+            console.error(`Script stderr: ${stderr}`);
+        }
+
+        console.log(`Script stdout: ${stdout}`);
+        res.json({ success: true, message: 'Efficiency calculation complete! Refreshing data.' });
+    });
+});
 
 // --- REPORTING ENDPOINTS ---
 app.get('/api/all-reports', async (req, res) => {
     try {
         const snapshot = await db.ref('reports').once('value');
         res.json(snapshot.exists() ? snapshot.val() : {});
-    } catch (error) { res.status(500).send(error.message); }
+    } catch (error) { 
+      res.status(500).send(error.message); 
+    }
 });
 app.get('/api/download-report-pdf', (req, res) => {
     const pdfPath = path.join(__dirname, '../reports/latest_report.pdf');
@@ -55,8 +111,19 @@ app.get('/api/download-report-pdf', (req, res) => {
         if (err) { res.status(404).send("Could not find the report PDF. Please run 'report_generator.py'."); }
     });
 });
-app.post('/api/send-report-sms', (req, res) => { const { phone } = req.body; console.log(`SIMULATION: SMS to ${phone}`); res.json({ success: true, message: `Report sent to ${phone} (Simulated)` }); });
-app.post('/api/send-report-email', (req, res) => { const { email } = req.body; console.log(`SIMULATION: Email to ${email}`); res.json({ success: true, message: `Report sent to ${email} (Simulated)` }); });
+
+app.post('/api/send-report-sms', (req, res) => { 
+  const { phone } = req.body; console.log(`SIMULATION: SMS to ${phone}`); 
+  res.json({ success: true, message: `Report sent to ${phone} (Simulated)` 
+  }); 
+});
+
+app.post('/api/send-report-email', (req, res) => { 
+  const { email } = req.body; 
+  console.log(`SIMULATION: Email to ${email}`); 
+  res.json({ success: true, message: `Report sent to ${email} (Simulated)` 
+  }); 
+});
 
 // --- START THE SERVER ---
 app.listen(PORT, () => {

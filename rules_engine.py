@@ -2,11 +2,8 @@ import firebase_admin
 from firebase_admin import credentials, db
 import time
 from datetime import datetime
-# --- SECURE CONFIGURATION BLOCK (for all Python files) ---
 import os
 from dotenv import load_dotenv
-import firebase_admin
-from firebase_admin import credentials, db
 import json
 
 # Load variables from the .env file in the root directory
@@ -87,7 +84,7 @@ def run_rules_engine():
                 )
 
             # --- Rule 2: Overflow Alert (WARNING) ---
-            is_overflow = (data['battery_soc_percent'] > 95 and 
+            is_overflow = (data['battery_soc_percent'] > 95 or 
                            data['generation']['total_kw'] > data['consumption_kw'])
             if is_overflow:
                 create_alert(
@@ -105,6 +102,10 @@ def run_rules_engine():
                     message="Solar generation is near zero during daytime. Maintenance may be required.",
                     severity="WARNING" # NEW: Added severity
                 )
+            print("SOC:", data['battery_soc_percent'])
+            print("Total gen:", data['generation']['total_kw'])
+            print("Consumption:", data['consumption_kw'])
+            print("Solar gen:", data['generation']['solar_kw'])
 
         except Exception as e:
             print(f"An error occurred in the rules engine loop: {e}")

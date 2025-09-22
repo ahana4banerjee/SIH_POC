@@ -4,13 +4,11 @@ import random
 import datetime
 import numpy as np
 import paho.mqtt.client as mqtt
-import requests # New import for making API calls
-# --- SECURE CONFIGURATION BLOCK (for all Python files) ---
+import requests 
 import os
 from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, db
-import json
 
 # Load variables from the .env file in the root directory
 load_dotenv()
@@ -39,8 +37,8 @@ MQTT_TOPIC = "smartgrid/data"
 # TODO: Paste your own free API key from OpenWeatherMap.org here
 WEATHER_API_KEY = os.getenv('OPENWEATHER_API_KEY')
 # Coordinates for a sample rural area (e.g., a village in Telangana, India)
-LATITUDE = 20.3
-LONGITUDE = 84.1
+LATITUDE = 63.5
+LONGITUDE = 154.4
 
 # Simulation Parameters (unchanged)
 SOLAR_AREA = 25
@@ -69,9 +67,6 @@ except Exception as e:
 # --- NEW: Fetch Live Weather Data ---
 def get_live_weather_data():
     """Fetches real-world weather data to make the simulation realistic."""
-    if WEATHER_API_KEY == "YOUR_API_KEY_HERE":
-        print("WARNING: Weather API key is not set. Using default random values.")
-        return {'wind_speed': random.uniform(3, 12), 'clouds': random.randint(10, 70)}
     
     api_url = f"https://api.openweathermap.org/data/2.5/weather?lat={LATITUDE}&lon={LONGITUDE}&appid={WEATHER_API_KEY}&units=metric"
     try:
@@ -95,7 +90,8 @@ solar_efficiency_modifier = 1.0
 
 def get_time_based_value(peak_value, peak_hour):
     now = datetime.datetime.now()
-    hour = now.hour + now.minute / 60
+    # hour = now.hour + now.minute / 60
+    hour = 13
     return max(0, peak_value * np.sin((hour - (peak_hour - 6)) * np.pi / 12))
 
 def simulate_solar_generation(cloud_cover_percent):

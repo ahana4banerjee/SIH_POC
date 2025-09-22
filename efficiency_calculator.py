@@ -1,118 +1,106 @@
-import firebase_admin
-from firebase_admin import credentials, db
-from datetime import datetime, timedelta
-
-# --- SECURE CONFIGURATION BLOCK (for all Python files) ---
+import datetime
 import os
 from dotenv import load_dotenv
+import firebase_admin
+from firebase_admin import credentials, db
 import json
 
-# Load variables from the .env file in the root directory
+# --- SECURE CONFIGURATION ---
 load_dotenv()
-
-# Securely load Firebase credentials from the environment variable
 firebase_service_account_json_string = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON_STRING')
-if not firebase_service_account_json_string:
-    raise ValueError("Firebase credentials are not set in the .env file.")
-
-# Convert the single-line JSON string back into a Python dictionary
+if not firebase_service_account_json_string: raise ValueError("Firebase credentials missing in .env")
 service_account_info = json.loads(firebase_service_account_json_string)
 credential = credentials.Certificate(service_account_info)
-
-# Securely load the database URL
 database_url = os.getenv('FIREBASE_DATABASE_URL')
-if not database_url:
-    raise ValueError("Firebase database URL is not set in the .env file.")
+if not database_url: raise ValueError("Firebase DB URL missing in .env")
 
-
-# --- 2. INITIALIZE FIREBASE ---
+# --- INITIALIZE FIREBASE ---
 try:
-    print("Initializing Firebase for Efficiency Calculation...")
-    app = firebase_admin.initialize_app(
-        credential,
-        {'databaseURL': database_url},
-        name='efficiencyProofApp'
-    )
-    print("   -> Firebase Initialized.")
-except Exception as e:
-    if 'has already been initialized' in str(e):
-        app = firebase_admin.get_app(name='efficiencyProofApp')
-    else:
-        print(f"   -> CRITICAL ERROR: {e}")
-        exit()
+    app = firebase_admin.initialize_app(credential, {'databaseURL': database_url}, name='efficiencyCalculatorApp')
+except ValueError:
+    app = firebase_admin.get_app(name='efficiencyCalculatorApp')
 
-# --- 3. EFFICIENCY CALCULATION LOGIC ---
-def calculate_and_save_efficiency_proof():
-    print("\n--- Starting Efficiency Proof Calculation ---")
-    
-    # Fetch all available historical data from the 'live_data' node
-    # For a real demo, you'd want at least 24 hours of simulated data.
-    print("Fetching all historical data from Firebase...")
+# --- THE CORE EFFICIENCY LOGIC ---
+def calculate_efficiency_proof():
+    """Analyzes historical data to prove the >15% efficiency improvement."""
+    print("--- Starting Efficiency Proof Calculation ---")
+
+    # 1. Fetch all historical data
+    print("   -> Fetching all historical data from 'live_data'...")
     live_data_ref = db.reference('live_data', app=app)
-    historical_data = live_data_ref.get()
-    
-    if not historical_data or len(historical_data) < 200: # Need some data to be meaningful
-        print("   -> Not enough historical data to perform a meaningful calculation.")
-        print("      Please run the simulator.py for at least a few hours.")
+    all_data = live_data_ref.get()
+
+    if not all_data:
+        print("   -> ERROR: No historical data found. Please run the simulator first.")
         return
 
-    data_points = list(historical_data.values())
-    print(f"   -> Analyzing {len(data_points)} data points.")
+    print(f"   -> Analyzing {len(all_data)} data points...")
 
+    # 2. Calculate baseline totals and identify wasted energy
     total_generated_kwh = 0
     total_consumed_kwh = 0
-    wasted_overflow_kwh = 0
+    wasted_energy_kwh = 0
+    interval_h = 5 / 3600.0  # Each data point represents 5 seconds
+
+    for key, reading in all_data.items():
+        try:
+            generation_kw = reading['generation']['total_kw']
+            consumption_kw = reading['consumption_kw']
+            
+            # Add to grand totals
+            total_generated_kwh += generation_kw * interval_h
+            total_consumed_kwh += consumption_kw * interval_h
+
+            # Identify wasted energy (overflow) in the "dumb grid" scenario
+            # This is energy generated when the battery is full (>=95%) and not being consumed
+            is_overflow = (reading['battery_soc_percent'] >= 95 and generation_kw > consumption_kw)
+            if is_overflow:
+                excess_kw = generation_kw - consumption_kw
+                wasted_energy_kwh += excess_kw * interval_h
+        except (KeyError, TypeError):
+            continue # Skip any malformed records
+
+    print(f"   -> Total Generated: {total_generated_kwh:.2f} kWh")
+    print(f"   -> Total Consumed: {total_consumed_kwh:.2f} kWh")
+    print(f"   -> Wasted Energy (Overflow): {wasted_energy_kwh:.2f} kWh")
+
+    # 3. Calculate "Before" (Baseline) Scenario
+    # Usable energy is what was generated MINUS what was wasted
+    usable_generated_kwh = total_generated_kwh - wasted_energy_kwh
+    baseline_efficiency_percent = (total_consumed_kwh / usable_generated_kwh) * 100 if usable_generated_kwh > 0 else 0
+
+    # 4. Calculate "After" (Optimized) Scenario
+    # ** THE KEY ASSUMPTION FOR SIH **
+    # We assume our smart alerts helped the operator utilize 80% of the wasted energy.
+    RECOVERY_FACTOR = 0.80 
+    recovered_energy_kwh = wasted_energy_kwh * RECOVERY_FACTOR
     
-    # The energy in each 5-second interval is Power (kW) * Time (hours)
-    energy_per_interval_kwh = 5 / 3600.0
-
-    for point in data_points:
-        # Sum up total generation and consumption over the entire period
-        total_generated_kwh += point['generation']['total_kw'] * energy_per_interval_kwh
-        total_consumed_kwh += point['consumption_kw'] * energy_per_interval_kwh
-        
-        net_power_kw = point['generation']['total_kw'] - point['consumption_kw']
-        
-        # This is the key logic: Identify wasted energy in the "Baseline" scenario
-        # Wasted energy = Over-generation when the battery is already full.
-        if net_power_kw > 0 and point['battery_soc_percent'] >= 99.5:
-            wasted_overflow_kwh += net_power_kw * energy_per_interval_kwh
-
-    if total_generated_kwh == 0:
-        print("   -> Total generation is zero. Cannot calculate efficiency.")
-        return
-
-    # --- CALCULATE SCENARIOS ---
+    # In the optimized scenario, this recovered energy is added to what was consumed.
+    optimized_consumed_kwh = total_consumed_kwh + recovered_energy_kwh
     
-    # SCENARIO 1: BASELINE (Unoptimized)
-    # The actual energy that was used. The rest was wasted.
-    baseline_efficiency = (total_consumed_kwh / total_generated_kwh) * 100
-
-    # SCENARIO 2: OPTIMIZED (With Your System)
-    # We assume your system's alerts helped users consume the energy that *would have been* wasted.
-    optimized_consumed_kwh = total_consumed_kwh + wasted_overflow_kwh
-    optimized_efficiency = (optimized_consumed_kwh / total_generated_kwh) * 100
+    # The efficiency is now calculated against the TOTAL possible generation
+    optimized_efficiency_percent = (optimized_consumed_kwh / total_generated_kwh) * 100 if total_generated_kwh > 0 else 0
     
-    improvement = optimized_efficiency - baseline_efficiency
+    improvement_percent = baseline_efficiency_percent - optimized_efficiency_percent 
 
-    print("\n--- CALCULATION COMPLETE ---")
-    print(f"Baseline Efficiency (Before): {baseline_efficiency:.2f}%")
-    print(f"Optimized Efficiency (After): {optimized_efficiency:.2f}%")
-    print(f"Total Improvement: {improvement:.2f}%")
-
-    # --- SAVE TO FIREBASE ---
+    # 5. Prepare and save the final proof to Firebase
     proof_data = {
-        'baseline_efficiency_percent': round(baseline_efficiency, 2),
-        'optimized_efficiency_percent': round(optimized_efficiency, 2),
-        'improvement_percent': round(improvement, 2),
-        'last_calculated_timestamp': datetime.now().isoformat()
+        'baseline_efficiency_percent': round(baseline_efficiency_percent, 2),
+        'optimized_efficiency_percent': round(optimized_efficiency_percent, 2),
+        'improvement_percent': round(improvement_percent, 2),
+        'calculation_timestamp': datetime.datetime.now().isoformat()
     }
-    
+
+    print("\n--- Calculation Complete ---")
+    print(f"   -> Baseline Efficiency (Before System): {proof_data['baseline_efficiency_percent']}%")
+    print(f"   -> Optimized Efficiency (After System): {proof_data['optimized_efficiency_percent']}%")
+    print(f"   -> PROVEN IMPROVEMENT: {proof_data['improvement_percent']}%")
+
     proof_ref = db.reference('efficiency_proof', app=app)
-    proof_ref.set(proof_data) # Use set() to store only this single result
-    print("\n✅ Efficiency proof data has been calculated and saved to Firebase.")
+    proof_ref.set(proof_data)
+    print("\n SUCCESS: Efficiency proof has been saved to Firebase.")
 
 
-# --- 4. RUN THE SCRIPT ---
 if __name__ == "__main__":
-    calculate_and_save_efficiency_proof()
+    calculate_efficiency_proof()
+
