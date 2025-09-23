@@ -8,11 +8,17 @@ import json
 # --- SECURE CONFIGURATION ---
 load_dotenv()
 firebase_service_account_json_string = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON_STRING')
-if not firebase_service_account_json_string: raise ValueError("Firebase credentials missing in .env")
+
+if not firebase_service_account_json_string: 
+    raise ValueError("Firebase credentials missing in .env")
+
 service_account_info = json.loads(firebase_service_account_json_string)
+
 credential = credentials.Certificate(service_account_info)
+
 database_url = os.getenv('FIREBASE_DATABASE_URL')
-if not database_url: raise ValueError("Firebase DB URL missing in .env")
+if not database_url: 
+    raise ValueError("Firebase DB URL missing in .env")
 
 # --- INITIALIZE FIREBASE ---
 try:
